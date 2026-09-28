@@ -76,7 +76,9 @@ public class AccountService {
         String salt = PasswordHasher.generateSalt();
         String hash = PasswordHasher.hash(salt, password);
 
-        Account account = new Account(username, emailKey, dateOfBirth, phone, salt, hash);
+        Account account = new Account(
+                username, emailKey, dateOfBirth, phone, salt, hash
+        );
 
         accounts.put(userKey, account);
         emailToUsernameMap.put(emailKey, userKey);
@@ -84,27 +86,82 @@ public class AccountService {
         return ResultCode.SUCCESS;
     }
 
+    // LOGIN
     public ResultCode login(String username, String password) {
-        throw new UnsupportedOperationException("TODO");
+        if (isBlank(username) || isBlank(password)) {
+            return ResultCode.INVALID_INPUT;
+        }
+
+        Account acc = accounts.get(key(username));
+
+        if (acc == null) {
+            return ResultCode.INVALID_CREDENTIALS;
+        }
+
+        if (acc.getStatus() == AccountStatus.DISABLED) {
+            return ResultCode.ACCOUNT_DISABLED;
+        }
+
+        if (acc.isLocked()) {
+            return ResultCode.ACCOUNT_LOCKED;
+        }
+
+        if (!PasswordHasher.matches(
+                acc.getSalt(), password, acc.getCurrentPasswordHash())) {
+
+            acc.incrementFailedAttempts();
+
+            if (acc.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+                acc.lock();
+                return ResultCode.ACCOUNT_LOCKED;
+            }
+
+            return ResultCode.INVALID_CREDENTIALS;
+        }
+
+        acc.resetFailedAttempts();
+        return ResultCode.SUCCESS;
     }
 
+    // DISABLE ACCOUNT
     public ResultCode disableAccount(String username) {
-        throw new UnsupportedOperationException("TODO");
+        Optional<Account> accOpt = findByUsername(username);
+
+        if (accOpt.isEmpty()) {
+            return ResultCode.USER_NOT_FOUND;
+        }
+
+        accOpt.get().setStatus(AccountStatus.DISABLED);
+
+        return ResultCode.SUCCESS;
     }
 
+    // UNLOCK ACCOUNT
     public ResultCode unlockAccount(String username) {
-        throw new UnsupportedOperationException("TODO");
+        Optional<Account> accOpt = findByUsername(username);
+
+        if (accOpt.isEmpty()) {
+            return ResultCode.USER_NOT_FOUND;
+        }
+
+        accOpt.get().unlock();
+
+        return ResultCode.SUCCESS;
     }
 
+    // FIND ACCOUNT
     public Optional<Account> findByUsername(String username) {
         if (isBlank(username)) {
             return Optional.empty();
         }
+
         return Optional.ofNullable(accounts.get(key(username)));
     }
 
+    // CHECK LOCK STATUS
     public boolean isLocked(String username) {
         Optional<Account> acc = findByUsername(username);
+
         return acc.map(Account::isLocked).orElse(false);
     }
 
